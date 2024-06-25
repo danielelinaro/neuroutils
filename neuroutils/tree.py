@@ -1,3 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+Copyright (C) 2024 Daniele Linaro <danielelinaro@gmail.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+"""
+
 
 __all__ = ['Node','Tree']
 
@@ -98,36 +113,6 @@ class Tree (object):
             if node == node_i:
                 break
         if path[-1] != node_i:
-            raise Exception(f"No path between ID '{ID_i}' and ID '{ID_j}'")
+            return None
         return path[::-1]
-
-
-def make_binary_tree(node, num_levels):
-    num_levels -= 1
-    if num_levels == 0:
-        return
-    node.children = [Node(ID=node.ID+suffix) for suffix in 'LR']
-    for child in node.children:
-        make_binary_tree(child, num_levels)
-
-
-if __name__ == '__main__':
-    import math
-    root = Node(ID='')
-    num_levels = 4
-    make_binary_tree(root, num_levels)
-    tree = Tree(root)
-    fmt = '[{:0%dd}] {}' % (int(math.log10(2**num_levels-1))+1)
-    for i,node in enumerate(tree):
-        print(fmt.format(i+1, node))
-
-    node = tree.find_node(Node(ID='LR'))
-    print(node.parent)
-
-    try:
-        ID_i,ID_j = '','RLR'
-        path = tree.find_connecting_path(ID_i, ID_j)
-        print(' -> '.join([node.__str__() for node in path]))
-    except:
-        print(f"No path between nodes with IDs '{ID_i}' and '{ID_j}'.")
 
