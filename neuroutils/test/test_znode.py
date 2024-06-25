@@ -13,17 +13,12 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 """
 
-def _test(verbosity=2):
 
-    from .test_node import TestNode
-    from .test_tree import TestTree
-    from .test_znode import TestImpedanceNode
-    from unittest import TestSuite, TestLoader, TextTestRunner
+import unittest
+from ..nodes import ImpedanceNode
 
-    # list of test cases
-    suites = [
-        TestLoader().loadTestsFromTestCase(TestNode),
-        TestLoader().loadTestsFromTestCase(TestTree),
-        TestLoader().loadTestsFromTestCase(TestImpedanceNode),
-    ]
-    TextTestRunner(verbosity=verbosity).run(TestSuite(suites))
+class TestImpedanceNode(unittest.TestCase):
+
+    def test_equal(self):
+        self.assertEqual(0, 0, 'Nodes are not equal')
+

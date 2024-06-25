@@ -16,12 +16,13 @@ GNU General Public License for more details.
 
 __all__ = ['Node','ImpedanceNode']
 
+import numpy as np
 
 class Node (object):
-    def __init__(self, ID, parent=None, children=[]):
+    def __init__(self, ID, parent=None, children=None):
         self.ID = ID
         self.parent = parent
-        self.children = children
+        self.children = children if children is not None else []
 
     @property
     def ID(self):
@@ -63,7 +64,7 @@ class Node (object):
 
 
 class ImpedanceNode (Node):
-    def __init__(self, seg, parent=None, children=[]):
+    def __init__(self, seg, parent=None, children=None):
         self.seg = seg
         sec,x = seg.sec, seg.x
         # the section that contains this segment
@@ -73,8 +74,6 @@ class ImpedanceNode (Node):
         super().__init__(ID=ImpedanceNode.make_ID(seg),
                          parent=parent,
                          children=children)
-        # attenuation
-        self._A = np.zeros(len(self.children), dtype=complex)
         # the length of this segment
         self._L    = sec.L / sec.nseg * 1e-4  # [cm]
         self._diam = seg.diam * 1e-4          # [cm]
@@ -88,7 +87,7 @@ class ImpedanceNode (Node):
         self._ra   = sec.Ra                   # [Ohm cm]
         # half the total axial resistance
         self._Ra   = 2*self._ra*self._L/(np.pi*self._diam**2) # [Ohm]
-        self.compute_impedances(0)
+        self._A = np.zeros(len(self.children), dtype=complex)
 
     def make_ID(seg):
         return '{}-{:.4f}'.format(seg.sec.name(), seg.x)
