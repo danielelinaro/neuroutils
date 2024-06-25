@@ -15,7 +15,8 @@ GNU General Public License for more details.
 
 
 import unittest
-from ..tree import Tree, Node
+from ..nodes import Node
+from ..trees import Tree
 
 def make_binary_tree(node, num_levels):
     num_levels -= 1

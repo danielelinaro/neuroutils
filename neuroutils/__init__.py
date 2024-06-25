@@ -14,7 +14,7 @@ GNU General Public License for more details.
 """
 
 
-from . import tree
-from . import ztree
+from . import nodes
+from . import trees
 
 from .test import _test as run_tests

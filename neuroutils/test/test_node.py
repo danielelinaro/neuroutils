@@ -15,7 +15,7 @@ GNU General Public License for more details.
 
 
 import unittest
-from ..tree import Node
+from ..nodes import Node
 
 class TestNode(unittest.TestCase):
 

@@ -14,9 +14,52 @@ GNU General Public License for more details.
 """
 
 
-from .tree import Node, Tree
+__all__ = ['Node','ImpedanceNode']
 
-__all__ = ['ImpedanceNode', 'ImpedanceTree']
+
+class Node (object):
+    def __init__(self, ID, parent=None, children=[]):
+        self.ID = ID
+        self.parent = parent
+        self.children = children
+
+    @property
+    def ID(self):
+        return self._ID
+    @ID.setter
+    def ID(self, value):
+        self._ID = value
+
+    @property
+    def parent(self):
+        return self._parent
+    @parent.setter
+    def parent(self, p):
+        self._parent = p
+
+    @property
+    def children(self):
+        return self._children
+    @children.setter
+    def children(self, children):
+        if not isinstance(children, list):
+            raise ValueError('children must be a list')
+        if not all([isinstance(child, Node) for child in children]):
+            raise ValueError('all children must be nodes')
+        self._children = children
+        for child in self.children:
+            child.parent = self
+    def add_child(self, child):
+        if not isinstance(child, Node):
+            raise ValueError('child must be a node')
+        self.children.append(child)
+        child.parent = self
+
+    def __str__(self):
+        return f"'{self.ID}'"
+
+    def __eq__(self, other):
+        return other.ID == self.ID
 
 
 class ImpedanceNode (Node):
@@ -90,63 +133,4 @@ class ImpedanceNode (Node):
 
     def __eq__(self, other):
         return other.seg == self.seg
-
-
-class ImpedanceTree (Tree):
-    def __init__(self, root_node=None, root_sec=None, root_seg=None):
-        if root_node is not None:
-            root = self._make_branch(root_node.seg.sec)
-        elif root_sec is not None:
-            root = self._make_branch(root_sec)
-        elif root_seg is not None:
-            root = self._make_branch(root_seg.sec)
-        else:
-            raise Exception('one of root_node, root_sec or root_seg must be passed')
-        super.__init__(root)
-
-    def compute_impedances(self, F):
-        self.root.compute_impedances(F)
-        
-    def compute_attenuations(self):
-        self.root.compute_attenuations()
-
-    def _make_branch(self, sec):
-        branch = [Node(seg) for seg in sec]
-        n_nodes = len(branch)
-        for i in range(n_nodes-1):
-            branch[i].add_child(branch[i+1])
-        for child in sec.children():
-            child_node = self._make_branch(child)
-            branch[-1].add_child(child_node)
-        return branch[0]
-
-    def compute_attenuation(self, seg_i, seg_j):
-        path = super.find_connecting_path(ImpedanceNode.make_ID(seg_i),
-                                          ImpedanceNode.make_ID(seg_j))
-        A = []
-        import ipdb
-        ipdb.set_trace()
-
-    def find_connecting_path(self, seg_i, seg_j, with_attenuation=True):
-        node_i = self.find_segment(seg_i)
-        if node_i is None:
-            raise Exception('seg_i not in tree')
-        node_j = self.find_segment(seg_j)
-        if node_j is None:
-            raise Exception('seg_j not in tree')
-        path = [node_j]
-        A = []
-        node = node_j
-        while node.parent is not None:
-            idx = node.parent.children.index(node)
-            A.append(node.parent.A[idx])
-            node = node.parent
-            path.append(node)
-            if node == node_i:
-                break
-        if path[-1] != node_i:
-            raise Exception('Cannot find path between seg_i and seg_j')
-        if with_attenuation:
-            return path[::-1],np.array(A[::-1])
-        return path[::-1]
 
