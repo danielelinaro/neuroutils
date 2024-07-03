@@ -14,16 +14,18 @@ GNU General Public License for more details.
 """
 
 
-from .nodes import Node, ImpedanceNode
+from .nodes import Node, ImpedanceNode, SWCNode
 import numpy as np
 
-__all__ = ['Tree', 'ImpedanceTree']
+__all__ = ['Tree', 'ImpedanceTree', 'SWCTree']
 
 
 class Tree (object):
     def __init__(self, root):
-        self.root = root
-        
+        self._root = root
+        self._branches = []
+        self._make_branches(self.root, self._branches)
+
     @property
     def root(self):
         return self._root
@@ -31,6 +33,10 @@ class Tree (object):
     def root(self, r):
         self._root = r
 
+    @property
+    def branches(self):
+        return self._branches
+        
     def _gather_nodes(self, node, node_list):
         if not node is None:
             node_list.append(node)
@@ -55,6 +61,16 @@ class Tree (object):
                 return n
         return None
 
+    def _make_branches(self, node, branches):
+        branch = []
+        while len(node.children) == 1:
+            branch.append(node)
+            node = node.children[0]
+        branch.append(node)
+        branches.append(branch)
+        for child in node.children:
+            self._make_branches(child, branches)
+
     def find_connecting_path(self, ID_i, ID_j):
         node_i = self.find_node_with_ID(ID_i)
         if node_i is None:
@@ -78,13 +94,14 @@ class Tree (object):
 class ImpedanceTree (Tree):
     def __init__(self, root_node=None, root_sec=None, root_seg=None):
         if root_node is not None:
-            root = self._make_branch(root_node.seg.sec)
+            sec = root_node.seg.sec
         elif root_sec is not None:
-            root = self._make_branch(root_sec)
+            sec = root_sec
         elif root_seg is not None:
-            root = self._make_branch(root_seg.sec)
+            sec = root_seg.sec
         else:
             raise Exception('one of root_node, root_sec or root_seg must be passed')
+        root = self._make_branch_from_section(sec)
         super().__init__(root)
 
     def compute_impedances(self, F):
@@ -93,13 +110,13 @@ class ImpedanceTree (Tree):
     def compute_attenuations(self):
         self.root.compute_attenuations()
 
-    def _make_branch(self, sec):
+    def _make_branch_from_section(self, sec):
         branch = [ImpedanceNode(seg) for seg in sec]
         n_nodes = len(branch)
         for i in range(n_nodes-1):
             branch[i].add_child(branch[i+1])
         for child in sec.children():
-            child_node = self._make_branch(child)
+            child_node = self._make_branch_from_section(child)
             branch[-1].add_child(child_node)
         return branch[0]
 
@@ -115,4 +132,114 @@ class ImpedanceTree (Tree):
         if full_output:
             return A,A_on_path
         return A
+
+
+class SWCTree (Tree):
+    def __init__(self, swc_file):
+        from collections import OrderedDict
+        data = np.loadtxt(swc_file)
+        idx = (data[:,1] == 2) | (data[:,1] == 3) | (data[:,1] == 4)
+        x = data[idx, 2]
+        y = data[idx, 3]
+        z = data[idx, 4]
+        self.xy_ratio = (x.max() - x.min()) / (y.max() - y.min())
+        self.bounds = np.array([[x.min(), x.max()], [y.min(), y.max()], [z.min(), z.max()]])
+        nodes = OrderedDict()
+        for row in data:
+            node_id   = int(row[0])
+            node_type = int(row[1])
+            x, y, z,  = row[2:5]
+            diam      = row[5]
+            parent_id = int(row[6])
+            parent = nodes[parent_id] if parent_id > 0 else None
+            nodes[node_id] = SWCNode(x,y,z,diam,node_type,node_id,parent)
+        self._nodes_dict = nodes
+        keys = list(nodes.keys())
+        super().__init__(nodes[keys[0]])
+
+    @property
+    def nodes(self):
+        return self._nodes_dict
+
+
+    def plot(self, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, points=None, values=None,
+             cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None,
+             bounds=None, diam_coeff=1, cbar_ticks_fun=lambda x: x):
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as colors
+        from matplotlib.collections import LineCollection
+        from matplotlib import cm
+    
+        if ax is None:
+            ax = plt.gca()
+
+        if points is None or values is None:
+            uniform_color_branches = True
+            if cmap is None:
+                color_fun = lambda i: [
+                    [0,0,0],    # soma
+                    [.2,.2,.2], # axon
+                    [.7,0,.7],  # basal
+                    [0,.7,0]    # apical
+                ][i-1]
+            elif isinstance(cmap, dict):
+                color_fun = lambda key: cmap[key]
+            else:
+                color_fun = cmap
+        else:
+            from scipy.interpolate import NearestNDInterpolator
+            uniform_color_branches = False
+            interp = NearestNDInterpolator(points, values)
+            norm = colors.Normalize(vmin = values.min(), vmax = values.max())
+
+        for branch in self.branches:
+            if branch[0].type not in type_ids:
+                continue
+            if branch[0].parent is not None:
+                node = branch[0].parent
+                xyzd = np.concatenate((np.array([node.x, node.y, node.z, node.diam * diam_coeff], ndmin=2),
+                                       [[node.x, node.y, node.z, node.diam * diam_coeff] for node in branch]))
+            else:
+                xyzd = np.array([[node.x, node.y, node.z, node.diam * diam_coeff] for node in branch])
+
+            if branch[0].parent is not None and branch[0].parent.type == 1:
+                xyzd[0,-1] = xyzd[1,-1]
+
+            xy = xyzd[:,:2].reshape(-1, 1, 2)
+            segments = np.concatenate([xy[:-1], xy[1:]], axis=1)
+            if uniform_color_branches:
+                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, colors=color_fun(branch[0].type))
+            else:
+                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, cmap=cmap, norm=norm)
+                lc.set_array(interp(xyzd[:,:3]))
+            line = ax.add_collection(lc)
+
+            if bounds is not None:
+                ax.set_xlim(bounds[0])
+                ax.set_ylim(bounds[1])
+            else:
+                ax.set_xlim(self.bounds[0])
+                ax.set_ylim(self.bounds[1])
+                ax.axis('equal')
+
+        if scalebar_length is not None:
+            xlim = ax.get_xlim()
+            ylim = ax.get_ylim()
+            x = xlim[0] / 1.5
+            y = (ylim[1] - scalebar_length) / 2
+            ax.plot(x + np.zeros(2), y + np.array([0, scalebar_length]), 'k', lw=2)
+            ax.text(x - np.diff(xlim)/15, y + scalebar_length/2, r'{} $\mu$m'.format(scalebar_length), fontsize=12, \
+                    horizontalalignment='center', verticalalignment='center', rotation=90)
+
+        if not uniform_color_branches and cbar_levels is not None:
+            if np.isscalar(cbar_ticks):
+                ticks = np.linspace(values.min(), values.max(), cbar_ticks)
+            else:
+                ticks = cbar_ticks
+            cbar = plt.colorbar(line, ax=ax, fraction=0.1, shrink=0.5, aspect=30, ticks=ticks, orientation=cbar_orientation)
+            cbar.ax.set_yticklabels(cbar_ticks_fun(ticks))
+            if cbar_orientation == 'vertical':
+                cbar.ax.set_ylabel(cbar_label)
+            else:
+                cbar.ax.set_xlabel(cbar_label)
 

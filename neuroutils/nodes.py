@@ -14,14 +14,17 @@ GNU General Public License for more details.
 """
 
 
-__all__ = ['Node','ImpedanceNode']
-
 import numpy as np
+
+__all__ = ['Node', 'ImpedanceNode', 'SWCNode']
+
 
 class Node (object):
     def __init__(self, ID, parent=None, children=None):
         self.ID = ID
         self.parent = parent
+        if parent is not None:
+            self.parent.add_child(self)
         self.children = children if children is not None else []
 
     @property
@@ -37,6 +40,12 @@ class Node (object):
     @parent.setter
     def parent(self, p):
         self._parent = p
+        #if self._parent != p:
+        #    old_parent = self._parent
+        #    if old_parent is not None:
+        #        old_parent.remove_child(self)
+        #    self._parent = p
+        #    self._parent.add_child(self)
 
     @property
     def children(self):
@@ -55,6 +64,9 @@ class Node (object):
             raise ValueError('child must be a node')
         self.children.append(child)
         child.parent = self
+    #def remove_child(self, node):
+    #    idx = self.children.index(node)
+    #    self.children.pop(idx)
 
     def __str__(self):
         return f"'{self.ID}'"
@@ -65,7 +77,7 @@ class Node (object):
 
 class ImpedanceNode (Node):
     def __init__(self, seg, parent=None, children=None):
-        self.seg = seg
+        self._seg = seg
         sec,x = seg.sec, seg.x
         # the section that contains this segment
         self._sec = sec
@@ -92,6 +104,9 @@ class ImpedanceNode (Node):
     def make_ID(seg):
         return '{}-{:.4f}'.format(seg.sec.name(), seg.x)
 
+    @property
+    def seg(self):
+        return self._seg
     @property
     def Ra(self):
         return self._Ra
@@ -131,5 +146,56 @@ class ImpedanceNode (Node):
             child.compute_attenuations()
 
     def __eq__(self, other):
-        return other.seg == self.seg
+        return other is not None and other.seg == self.seg
+
+
+class SWCNode (Node):
+    def __init__(self, x, y, z, diam, node_type, ID, parent=None, children=None):
+        super().__init__(ID=ID,
+                         parent=parent,
+                         children=children)
+        self._x,self._y,self._z = x,y,z
+        self._xyz = np.array([x,y,z])
+        self._diam = diam
+        self._node_type = node_type
+
+    @property
+    def type(self):
+        return self._node_type
+    @property
+    def x(self):
+        return self._x
+    @x.setter
+    def x(self, value):
+        self._x = value
+        self._xyz[0] = value
+    @property
+    def y(self):
+        return self._y
+    @y.setter
+    def y(self, value):
+        self._y = value
+        self._xyz[1] = value
+    @property
+    def z(self):
+        return self._z
+    @z.setter
+    def z(self, value):
+        self._z = value
+        self._xyz[2] = value
+    @property
+    def diam(self):
+        return self._diam
+    @diam.setter
+    def diam(self, value):
+        if value <= 0:
+            raise Exception('Diameter must be > 0')
+        self._diam = value
+    @property
+    def xyz(self):
+        return self._xyz
+    @xyz.setter
+    def xyz(self, value):
+        self._xyz = value
+        self._x,self._y,self._z = value
 
