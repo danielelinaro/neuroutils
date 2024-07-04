@@ -22,9 +22,9 @@ __all__ = ['Tree', 'ImpedanceTree', 'SWCTree']
 
 class Tree (object):
     def __init__(self, root):
-        self._root = root
+        self.root = root
         self._branches = []
-        self._make_branches(self.root, self._branches)
+        self._make_branches(self.root, self.branches)
 
     @property
     def root(self):

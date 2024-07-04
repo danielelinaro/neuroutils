@@ -23,8 +23,6 @@ class Node (object):
     def __init__(self, ID, parent=None, children=None):
         self.ID = ID
         self.parent = parent
-        if parent is not None:
-            self.parent.add_child(self)
         self.children = children if children is not None else []
 
     @property
@@ -39,13 +37,14 @@ class Node (object):
         return self._parent
     @parent.setter
     def parent(self, p):
+        if hasattr(self,'_parent'):
+            if self._parent == p:
+                return
+            if self._parent is not None:
+                self._parent.remove_child(self)
         self._parent = p
-        #if self._parent != p:
-        #    old_parent = self._parent
-        #    if old_parent is not None:
-        #        old_parent.remove_child(self)
-        #    self._parent = p
-        #    self._parent.add_child(self)
+        if p is not None and self not in p.children:
+            p.add_child(self)
 
     @property
     def children(self):
@@ -64,9 +63,9 @@ class Node (object):
             raise ValueError('child must be a node')
         self.children.append(child)
         child.parent = self
-    #def remove_child(self, node):
-    #    idx = self.children.index(node)
-    #    self.children.pop(idx)
+    def remove_child(self, node):
+        idx = self.children.index(node)
+        self.children.pop(idx)
 
     def __str__(self):
         return f"'{self.ID}'"
