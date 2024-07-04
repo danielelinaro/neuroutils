@@ -140,14 +140,14 @@ class ImpedanceTree (Tree):
         sref = h.SectionRef(node.sec)
         if sref.has_parent():
             parent_sec = sref.parent
+            parent_node = ImpedanceNode(_get_last_segment(parent_sec),
+                                        parent=parent_node)
             for child_sec in parent_sec.children():
                 if child_sec != node.sec:
                     child_node = ImpedanceNode(_get_first_segment(child_sec),
                                                parent=parent_node)
                     self._make_branch_increasing_x(child_node)
-            child_node = ImpedanceNode(_get_last_segment(parent_sec),
-                                       parent=parent_node)
-            self._make_branch_decreasing_x(child_node)
+            self._make_branch_decreasing_x(parent_node)
 
     def compute_attenuation(self, end_seg, full_output=False):
         path = super().find_connecting_path(ImpedanceNode.make_ID(self.root.seg),
