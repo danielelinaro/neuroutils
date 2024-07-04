@@ -16,6 +16,7 @@ GNU General Public License for more details.
 
 from .nodes import Node, ImpedanceNode, SWCNode
 import numpy as np
+from neuron import h
 
 __all__ = ['Tree', 'ImpedanceTree', 'SWCTree']
 
@@ -91,18 +92,21 @@ class Tree (object):
         return path[::-1]
 
 
+_get_ith_segment = lambda sec,i: [seg for seg in sec][i]
+_get_first_segment = lambda sec: _get_ith_segment(sec,0)
+_get_last_segment = lambda sec: _get_ith_segment(sec,-1)
+
 class ImpedanceTree (Tree):
-    def __init__(self, root_node=None, root_sec=None, root_seg=None):
-        if root_node is not None:
-            sec = root_node.seg.sec
-        elif root_sec is not None:
-            sec = root_sec
-        elif root_seg is not None:
-            sec = root_seg.sec
+    def __init__(self, root_seg=None, root_node=None):
+        if root_seg is not None:
+            root = ImpedanceNode(root_seg)
+        elif root_node is not None:
+            root = root_node
         else:
-            raise Exception('one of root_node, root_sec or root_seg must be passed')
-        root = self._make_branch_from_section(sec)
+            raise Exception('one of root_node or root_seg must be passed')
         super().__init__(root)
+        self._make_branch_increasing_x(root)
+        self._make_branch_decreasing_x(root)
 
     def compute_impedances(self, F):
         self.root.compute_impedances(F)
@@ -110,19 +114,44 @@ class ImpedanceTree (Tree):
     def compute_attenuations(self):
         self.root.compute_attenuations()
 
-    def _make_branch_from_section(self, sec):
-        branch = [ImpedanceNode(seg) for seg in sec]
-        n_nodes = len(branch)
-        for i in range(n_nodes-1):
-            branch[i].add_child(branch[i+1])
-        for child in sec.children():
-            child_node = self._make_branch_from_section(child)
-            branch[-1].add_child(child_node)
-        return branch[0]
+    def _make_branch_increasing_x(self, node):
+        branch = [ImpedanceNode(seg) for seg in node.sec if seg.x > node.seg.x]
+        if len(branch) > 0:
+            node.add_child(branch[0])
+            for node_i,node_j in zip(branch[:-1],branch[1:]):
+                node_i.add_child(node_j)
+            parent_node = branch[-1]
+        else:
+            parent_node = node
+        for child_sec in node.sec.children():
+            child_node = ImpedanceNode(_get_first_segment(child_sec),
+                                       parent=parent_node)
+            self._make_branch_increasing_x(child_node)
 
-    def compute_attenuation(self, seg_i, seg_j, full_output=False):
-        path = super().find_connecting_path(ImpedanceNode.make_ID(seg_i),
-                                            ImpedanceNode.make_ID(seg_j))
+    def _make_branch_decreasing_x(self, node):
+        branch = [ImpedanceNode(seg) for seg in node.sec if seg.x < node.seg.x][::-1]
+        if len(branch) > 0:
+            node.add_child(branch[0])
+            for node_i,node_j in zip(branch[:-1],branch[1:]):
+                node_i.add_child(node_j)
+            parent_node = branch[-1]
+        else:
+            parent_node = node
+        sref = h.SectionRef(node.sec)
+        if sref.has_parent():
+            parent_sec = sref.parent
+            for child_sec in parent_sec.children():
+                if child_sec != node.sec:
+                    child_node = ImpedanceNode(_get_first_segment(child_sec),
+                                               parent=parent_node)
+                    self._make_branch_increasing_x(child_node)
+            child_node = ImpedanceNode(_get_last_segment(parent_sec),
+                                       parent=parent_node)
+            self._make_branch_decreasing_x(child_node)
+
+    def compute_attenuation(self, end_seg, full_output=False):
+        path = super().find_connecting_path(ImpedanceNode.make_ID(self.root.seg),
+                                            ImpedanceNode.make_ID(end_seg))
         n_nodes = len(path)-1
         A_on_path = np.zeros(n_nodes, dtype=complex)
         for i in range(n_nodes):

@@ -107,6 +107,9 @@ class ImpedanceNode (Node):
     def seg(self):
         return self._seg
     @property
+    def sec(self):
+        return self._sec
+    @property
     def Ra(self):
         return self._Ra
     @property
