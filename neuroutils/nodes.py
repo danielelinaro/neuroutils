@@ -71,7 +71,7 @@ class Node (object):
         return f"'{self.ID}'"
 
     def __eq__(self, other):
-        return other.ID == self.ID
+        return other is not None and other.ID == self.ID
 
 
 class ImpedanceNode (Node):

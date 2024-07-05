@@ -79,17 +79,34 @@ class Tree (object):
         node_j = self.find_node_with_ID(ID_j)
         if node_j is None:
             raise ValueError(f"ID '{ID_j}' not in tree")
-        path = [node_j]
-        node = node_j
-        while node.parent is not None:
-            idx = node.parent.children.index(node)
-            node = node.parent
-            path.append(node)
-            if node == node_i:
-                break
-        if path[-1] != node_i:
-            return None
-        return path[::-1]
+        def _find_path_to_root(node):
+            path = [node]
+            while node.parent is not None:
+                idx = node.parent.children.index(node)
+                node = node.parent
+                path.append(node)
+            return path[::-1]
+        path_i = _find_path_to_root(node_i)
+        try:
+            idx = path_i.index(node_j)
+            return path_i[idx:]
+        except:
+            pass
+        path_j = _find_path_to_root(node_j)
+        try:
+            idx = path_j.index(node_i)
+            return path_j[idx:]
+        except:
+            pass
+        depth = {}
+        for node in path_i:
+            if len(node.children) > 1 and node in path_j:
+                depth[path_j.index(node)] = node
+        max_depth = max(list(depth.keys()))
+        # the deepest common ancestor of node_i and node_j
+        ancestor = depth[max_depth]
+        path = path_i[path_i.index(ancestor)+1:][::-1] + path_j[path_j.index(ancestor):]
+        return path
 
 
 _get_ith_segment = lambda sec,i: [seg for seg in sec][i]

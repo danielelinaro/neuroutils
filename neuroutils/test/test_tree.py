@@ -22,7 +22,7 @@ def make_binary_tree(node, num_levels):
     num_levels -= 1
     if num_levels == 0:
         return
-    node.children = [Node(ID=node.ID+suffix) for suffix in 'LR']
+    node.children = [Node(ID=node.ID+suffix, parent=node) for suffix in 'LR']
     for child in node.children:
         make_binary_tree(child, num_levels)
 
@@ -38,10 +38,10 @@ class TestTree(unittest.TestCase):
 
     def test_find_path(self):
         root = Node(ID='')
-        num_levels = 4
+        num_levels = 5
         make_binary_tree(root, num_levels)
         tree = Tree(root)
-        ID_i,ID_j = '','RLR'
+        ID_i,ID_j = 'RRL','RLR'
         path = tree.find_connecting_path(ID_i, ID_j)
         self.assertIsNotNone(path, f"No path between nodes with IDs '{ID_i}' and '{ID_j}'.")
-
+        self.assertTrue([node.ID for node in path] == ['RRL', 'RR', 'R', 'RL', 'RLR'])
