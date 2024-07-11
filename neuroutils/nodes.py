@@ -91,13 +91,16 @@ class ImpedanceNode (Node):
         # membrane resistance per unit area
         self._rm   = 1/seg.g_pas              # [Ohm cm2]
         # membrane capacitance per unit area
-        self._cm = seg.cm*1e-6                # [F/cm2]
+        self._cm   = seg.cm*1e-6              # [F/cm2]
         # membrane time constant
         self._taum = self._rm * self._cm      # [s]
         # axial resistivity
         self._ra   = sec.Ra                   # [Ohm cm]
-        # half the total axial resistance
-        self._Ra   = 2*self._ra*self._L/(np.pi*self._diam**2) # [Ohm]
+        # DC length constant
+        self._lambda_DC = 0.5*np.sqrt(self._diam*self._rm/self._ra) # [cm]
+        # DC input resistance
+        self._r_inf = 2*np.sqrt(self._ra*self._rm) / \
+                      (np.pi*self._diam**(3/2)) # [Ohm]
         self._A = np.zeros(len(self.children), dtype=complex)
 
     def make_ID(seg):
@@ -110,8 +113,8 @@ class ImpedanceNode (Node):
     def sec(self):
         return self._sec
     @property
-    def Ra(self):
-        return self._Ra
+    def Za(self):
+        return self._Za
     @property
     def Zm(self):
         return self._Zm
@@ -126,7 +129,12 @@ class ImpedanceNode (Node):
         return self._A
     
     def compute_impedances(self, F):
-        self._Zm = self._rm / (np.pi*self._diam*self._L*(1+1j*2*np.pi*F*self._taum))
+        w = 2*np.pi*F
+        sqrt = np.sqrt(1 + 1j*w*self._taum)
+        arg = self._L/self._lambda_DC * sqrt
+        den = sqrt * np.sinh(arg)
+        self._Zm = self._r_inf / den
+        self._Za = self._r_inf * (np.cosh(arg)-1) / den
         n_children = len(self.children)
         if n_children == 0:
             self._Zp = self._Zm
@@ -137,14 +145,14 @@ class ImpedanceNode (Node):
                 Z[i] = child.Zload
             # the parallel of all children impedances
             Z = 1/np.sum(1/Z)
-            self._Zp = (Z+self.Ra)*self.Zm/(Z+self.Ra+self.Zm)
-        self._Zload = self.Ra + self.Zp
+            self._Zp = (Z+self.Za)*self.Zm/(Z+self.Za+self.Zm)
+        self._Zload = self.Za + self.Zp
         
     def compute_attenuations(self):
         n_children = len(self.children)
         self._A = np.zeros(n_children, dtype=complex)
         for i,child in enumerate(self.children):
-            self._A[i] = 1 + (self.Ra + child.Ra) / child.Zp
+            self._A[i] = 1 + (self.Za + child.Za) / child.Zp
             child.compute_attenuations()
 
     def __eq__(self, other):
