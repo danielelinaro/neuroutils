@@ -1,0 +1,79 @@
+{
+    "cell_type": "thorny",
+    "cell_name": "DH070813",
+    "optimization_folder": "/Users/daniele/Postdoc/Research/CA3/01_Detailed_multicompartmental_models/OPTIMIZATIONS",
+    "optimization_run": "20191208071008_DH070813_",
+    "swc_file": "DH070813-.Edit.scaled.converted.swc",
+    "individual": 2,
+    "layer_limits": {
+	"perisomatic": [0, 100],
+	"basal": [50, 250],
+	"apical": [100, 400]
+    },
+    "spine": {
+        "head_L": 0.5,
+        "head_diam": 0.5,
+        "neck_L": 1.58,
+        "neck_diam": 0.05,
+	"Ra_neck_coeff": 1.5
+    },
+    "AMPA": {
+        "time_constants": {
+            "tau1": 0.1,
+            "tau2": 1.0
+        },
+	"Erev": 0
+    },
+    "NMDA": {
+        "model": "JS",
+        "extMgConc": 1.0,
+        "Kd": 9.888,
+        "gamma": 0.09137,
+        "sh": -7.778,
+        "time_constants": {
+            "tau1": 1.0,
+            "tau2": 50.0
+        },
+	"Erev": 0
+    },
+    "GABA": {
+	"Erev": -70
+    },
+    "refractory_period": 1e-3,
+    "synapses": {
+	"spine_loc_seed": 100,
+	"inter_burst_frequency": 50,
+	"intra_burst_frequency": -1,
+	"N": {"apical": 0},
+	"weights": {"AMPA": 0, "NMDA": 0}
+    },
+    "background": {
+	"synapses": {
+	    "N": {"exc": {"apical": 2, "basal": 0}, "inh": {"perisomatic": 5}},
+	    "rates": {"exc": 1, "inh": 1},
+	    "weights": {"AMPA": 1e-3, "NMDA": 0.1e-3, "GABA": 1000}
+	},
+	"I_soma": {
+	    "mean": 0,
+	    "stddev": 0,
+	    "tau": 20
+	},
+	"G_soma": {
+	    "Erev": [0, -70],
+	    "gbar": [0, 0],
+	    "tau": [5, 10],
+	    "rate": [1750, 1175]
+	}
+    },
+    "LFPy": {
+	"extent": [[-200,201],[-200,501],[20,70]],
+	"steps": [25,25,50],
+	"sigma": 0.3
+    },
+    "sim": {
+	"dt": 0.05,
+	"stim_dur": 3000,
+    	"delay": 0,
+	"after": 0
+    }
+}
