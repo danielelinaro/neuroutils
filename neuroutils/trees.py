@@ -14,11 +14,11 @@ GNU General Public License for more details.
 """
 
 
-from .nodes import Node, ImpedanceNode, SWCNode
+from .nodes import Node, ImpedanceNode, SWCImpedanceNode, SWCNode
 import numpy as np
 from neuron import h
 
-__all__ = ['Tree', 'ImpedanceTree', 'SWCTree']
+__all__ = ['Tree', 'BaseImpedanceTree', 'ImpedanceTree', 'SWCImpedanceTree', 'SWCTree']
 
 
 class Tree (object):
@@ -109,11 +109,34 @@ class Tree (object):
         return path
 
 
+class BaseImpedanceTree (Tree):
+    def __init__(self, root):
+        super().__init__(root)
+
+    def compute_impedances(self, F):
+        self.root.compute_impedances(F)
+        
+    def compute_attenuations(self):
+        self.root.compute_attenuations()
+
+    def compute_attenuation(self, ID_start, ID_end, full_output=False):
+        path = super().find_connecting_path(ID_start, ID_end)
+        n_nodes = len(path)-1
+        A_on_path = np.zeros(n_nodes, dtype=complex)
+        for i in range(n_nodes):
+            j = path[i].children.index(path[i+1])
+            A_on_path[i] = path[i].A[j]
+        A = np.abs(np.prod(A_on_path))
+        if full_output:
+            return A,A_on_path
+        return A
+
+
 _get_ith_segment = lambda sec,i: [seg for seg in sec][i]
 _get_first_segment = lambda sec: _get_ith_segment(sec,0)
 _get_last_segment = lambda sec: _get_ith_segment(sec,-1)
 
-class ImpedanceTree (Tree):
+class ImpedanceTree (BaseImpedanceTree):
     def __init__(self, root_seg=None, root_node=None):
         if root_seg is not None:
             root = ImpedanceNode(root_seg)
@@ -124,12 +147,6 @@ class ImpedanceTree (Tree):
         super().__init__(root)
         self._make_branch_increasing_x(root)
         self._make_branch_decreasing_x(root)
-
-    def compute_impedances(self, F):
-        self.root.compute_impedances(F)
-        
-    def compute_attenuations(self):
-        self.root.compute_attenuations()
 
     def _make_branch_increasing_x(self, node):
         branch = [ImpedanceNode(seg) for seg in node.sec if seg.x > node.seg.x]
@@ -167,17 +184,44 @@ class ImpedanceTree (Tree):
             self._make_branch_decreasing_x(parent_node)
 
     def compute_attenuation(self, end_seg, full_output=False):
-        path = super().find_connecting_path(ImpedanceNode.make_ID(self.root.seg),
-                                            ImpedanceNode.make_ID(end_seg))
-        n_nodes = len(path)-1
-        A_on_path = np.zeros(n_nodes, dtype=complex)
-        for i in range(n_nodes):
-            j = path[i].children.index(path[i+1])
-            A_on_path[i] = path[i].A[j]
-        A = np.abs(np.prod(A_on_path))
-        if full_output:
-            return A,A_on_path
-        return A
+        return super().compute_attenuation(ImpedanceNode.make_ID(self.root.seg),
+                                           ImpedanceNode.make_ID(end_seg),
+                                           full_output)
+
+
+class SWCImpedanceTree (BaseImpedanceTree):
+    def __init__(self, swc_file, cm, rm, ra):
+        import pandas as pd
+        from collections import OrderedDict
+        col_names = 'ID','typ','x','y','z','diam','parent_ID'
+        col_types = {'ID': np.int32, 'typ': np.int32, 'x': np.float32,
+                     'y': np.float32, 'z': np.float32, 'diam': np.float32,
+                     'parent_ID': np.int32}
+        df = pd.read_table(swc_file, sep=' ', header=None, names=col_names, index_col='ID')
+        nodes = OrderedDict()
+        soma_idx, = np.where(df.loc[:,'typ'] == 1)
+        if len(soma_idx) == 3:
+            # 3-point soma
+            coords = df.loc[[2,3],['x','y','z']].to_numpy()
+            diams = df.loc[[2,3],'diam'].to_numpy()
+            nodes[1] = SWCImpedanceNode(1, coords, diams, cm, rm, ra, node_type=1)
+        else:
+            raise NotImplementedError('Only morphologies with 3-point soma are supported')
+        for ID,child in df.iterrows():
+            if child.typ != 1:
+                parent = df.loc[child.parent_ID]
+                coords = [[child.x, child.y, child.z],[parent.x, parent.y, parent.z]]
+                diams = [child.diam, parent.diam]
+                nodes[ID] = SWCImpedanceNode(ID, coords, diams,
+                                             cm, rm, ra, child.typ,
+                                             parent=nodes[child.parent_ID])
+        self._nodes_dict = nodes
+        super().__init__(nodes[1])
+        
+    @property
+    def nodes(self):
+        return self._nodes_df
+
 
 
 class SWCTree (Tree):
@@ -206,7 +250,6 @@ class SWCTree (Tree):
     @property
     def nodes(self):
         return self._nodes_dict
-
 
     def plot(self, type_ids=(1,2,3,4), scalebar_length=None, cmap=None, points=None, values=None,
              cbar_levels=None, cbar_ticks=10, cbar_orientation='vertical', cbar_label='', ax=None,

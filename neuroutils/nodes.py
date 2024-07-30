@@ -16,7 +16,7 @@ GNU General Public License for more details.
 
 import numpy as np
 
-__all__ = ['Node', 'ImpedanceNode', 'SWCNode']
+__all__ = ['Node', 'BaseImpedanceNode', 'ImpedanceNode', 'SWCImpedanceNode', 'SWCNode']
 
 
 class Node (object):
@@ -74,28 +74,19 @@ class Node (object):
         return other is not None and other.ID == self.ID
 
 
-class ImpedanceNode (Node):
-    def __init__(self, seg, parent=None, children=None):
-        self._seg = seg
-        sec,x = seg.sec, seg.x
-        # the section that contains this segment
-        self._sec = sec
-        # the position in the containing section
-        self._x = x
-        super().__init__(ID=ImpedanceNode.make_ID(seg),
-                         parent=parent,
-                         children=children)
-        # the length of this segment
-        self._L    = sec.L / sec.nseg * 1e-4  # [cm]
-        self._diam = seg.diam * 1e-4          # [cm]
-        # membrane resistance per unit area
-        self._rm   = 1/seg.g_pas              # [Ohm cm2]
+class BaseImpedanceNode (Node):
+    def __init__(self, ID, L, diam, cm, rm, ra, parent=None, children=None):
+        super().__init__(ID=ID, parent=parent, children=children)
+        self._L    = L
+        self._diam = diam
         # membrane capacitance per unit area
-        self._cm   = seg.cm*1e-6              # [F/cm2]
+        self._cm   = cm
+        # membrane resistance per unit area
+        self._rm   = rm
+        # axial resistivity
+        self._ra   = ra
         # membrane time constant
         self._taum = self._rm * self._cm      # [s]
-        # axial resistivity
-        self._ra   = sec.Ra                   # [Ohm cm]
         # DC length constant
         self._lambda_DC = 0.5*np.sqrt(self._diam*self._rm/self._ra) # [cm]
         # DC input resistance
@@ -103,15 +94,24 @@ class ImpedanceNode (Node):
                       (np.pi*self._diam**(3/2)) # [Ohm]
         self._A = np.zeros(len(self.children), dtype=complex)
 
-    def make_ID(seg):
-        return '{}-{:.4f}'.format(seg.sec.name(), seg.x)
-
     @property
-    def seg(self):
-        return self._seg
+    def L(self):
+        return self._L
     @property
-    def sec(self):
-        return self._sec
+    def diam(self):
+        return self._diam
+    @property
+    def cm(self):
+        return self._cm
+    @property
+    def rm(self):
+        return self._rm
+    @property
+    def ra(self):
+        return self._ra
+    @property
+    def taum(self):
+        return self._taum
     @property
     def Za(self):
         return self._Za
@@ -130,8 +130,8 @@ class ImpedanceNode (Node):
     
     def compute_impedances(self, F):
         w = 2*np.pi*F
-        sqrt = np.sqrt(1 + 1j*w*self._taum)
-        arg = self._L/self._lambda_DC * sqrt
+        sqrt = np.sqrt(1 + 1j*w*self.taum)
+        arg = self.L/self._lambda_DC * sqrt
         den = sqrt * np.sinh(arg)
         self._Zm = self._r_inf / den
         self._Za = self._r_inf * (np.cosh(arg)-1) / den
@@ -155,8 +155,66 @@ class ImpedanceNode (Node):
             self._A[i] = 1 + (self.Za + child.Za) / child.Zp
             child.compute_attenuations()
 
+
+class ImpedanceNode (BaseImpedanceNode):
+    def __init__(self, seg, parent=None, children=None):
+        self._seg = seg
+        sec,x = seg.sec, seg.x
+        # the section that contains this segment
+        self._sec = sec
+        # the position in the containing section
+        self._x = x
+        super().__init__(ID=ImpedanceNode.make_ID(seg),
+                         L=sec.L/sec.nseg*1e-4, # [cm]
+                         diam=seg.diam*1e-4,    # [cm
+                         cm=seg.cm*1e-6,        # [F/cm2]
+                         rm=1/seg.g_pas,        # [Ohm.cm2]
+                         ra=sec.Ra,             # [Ohm.cm]
+                         parent=parent,
+                         children=children)
+
+    def make_ID(seg):
+        return '{}-{:.4f}'.format(seg.sec.name(), seg.x)
+
+    @property
+    def seg(self):
+        return self._seg
+    @property
+    def sec(self):
+        return self._sec
+
     def __eq__(self, other):
         return other is not None and other.seg == self.seg
+
+
+class SWCImpedanceNode (BaseImpedanceNode):
+    def __init__(self, ID, coords, diams, cm, rm, ra, node_type, parent=None, children=None):
+        L,diam = SWCImpedanceNode.compute_equivalent_cylinder_pars(coords, diams)
+        self._x,self._y,self._z = np.mean(coords, axis=0)
+        self._xyz = np.array([self._x, self._y, self._z])
+        self._node_type = node_type
+        super().__init__(ID,
+                         L*1e-4,    # [cm]
+                         diam*1e-4, # [cm]
+                         cm*1e-6,   # [F/cm2]
+                         rm,        # [Ohm.cm2]
+                         ra,        # [Ohm.cm]
+                         parent=parent,
+                         children=children)
+
+    @classmethod
+    def compute_equivalent_cylinder_pars(cls, coords, diams):
+        # radius of the larger base
+        r1 = np.max(diams) / 2
+        # radius of the smaller base
+        r2 = np.min(diams) / 2
+        # distance between bases (i.e., height of the truncated cone)
+        h = np.sqrt(np.sum(np.diff(np.array(coords),axis=0)**2))
+        # slanted height of the truncated cone
+        g = np.sqrt(h**2 + (r1-r2)**2)
+        S = np.pi * (r1+r2) * g
+        L,diam = h,S/(np.pi*h)
+        return L,diam
 
 
 class SWCNode (Node):
