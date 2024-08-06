@@ -166,7 +166,7 @@ class ImpedanceNode (BaseImpedanceNode):
         self._x = x
         super().__init__(ID=ImpedanceNode.make_ID(seg),
                          L=sec.L/sec.nseg*1e-4, # [cm]
-                         diam=seg.diam*1e-4,    # [cm
+                         diam=seg.diam*1e-4,    # [cm]
                          cm=seg.cm*1e-6,        # [F/cm2]
                          rm=1/seg.g_pas,        # [Ohm.cm2]
                          ra=sec.Ra,             # [Ohm.cm]
@@ -189,16 +189,19 @@ class ImpedanceNode (BaseImpedanceNode):
 
 class SWCImpedanceNode (BaseImpedanceNode):
     def __init__(self, ID, coords, diams, cm, rm, ra, node_type, parent=None, children=None):
-        L,diam = SWCImpedanceNode.compute_equivalent_cylinder_pars(coords, diams)
+        L,diam,r1,r2,h,g,S = SWCImpedanceNode.compute_equivalent_cylinder_pars(coords, diams)
+        self._r1,self._r2 = r1,r2
+        self._h,self._g,self._S = h,g,S
         self._x,self._y,self._z = np.mean(coords, axis=0)
         self._xyz = np.array([self._x, self._y, self._z])
         self._node_type = node_type
         super().__init__(ID,
-                         L*1e-4,    # [cm]
-                         diam*1e-4, # [cm]
-                         cm*1e-6,   # [F/cm2]
-                         rm,        # [Ohm.cm2]
-                         ra,        # [Ohm.cm]
+                         L*1e-4,      # [cm]
+                         #TODO: figure out why the multiplication by 2 below is necessary
+                         2*diam*1e-4, # [cm]
+                         cm*1e-6,     # [F/cm2]
+                         rm,          # [Ohm.cm2]
+                         ra,          # [Ohm.cm]
                          parent=parent,
                          children=children)
 
@@ -214,7 +217,7 @@ class SWCImpedanceNode (BaseImpedanceNode):
         g = np.sqrt(h**2 + (r1-r2)**2)
         S = np.pi * (r1+r2) * g
         L,diam = h,S/(np.pi*h)
-        return L,diam
+        return L,diam,r1,r2,h,g,S
 
 
 class SWCNode (Node):

@@ -191,6 +191,15 @@ class ImpedanceTree (BaseImpedanceTree):
 
 class SWCImpedanceTree (BaseImpedanceTree):
     def __init__(self, swc_file, cm, rm, ra):
+        def make_dict(value):
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, (int,float)):
+                return {k: value for k in (1,2,3,4)}
+            raise ValueError('Argument must be a dictionary or a number')
+        cm_dict = make_dict(cm)
+        rm_dict = make_dict(rm)
+        ra_dict = make_dict(ra)
         import pandas as pd
         from collections import OrderedDict
         col_names = 'ID','typ','x','y','z','diam','parent_ID'
@@ -204,7 +213,10 @@ class SWCImpedanceTree (BaseImpedanceTree):
             # 3-point soma
             coords = df.loc[[2,3],['x','y','z']].to_numpy()
             diams = df.loc[[2,3],'diam'].to_numpy()
-            nodes[1] = SWCImpedanceNode(1, coords, diams, cm, rm, ra, node_type=1)
+            typ = 1
+            nodes[1] = SWCImpedanceNode(1, coords, diams, cm_dict[typ],
+                                        rm_dict[typ], ra_dict[typ],
+                                        node_type=typ)
         else:
             raise NotImplementedError('Only morphologies with 3-point soma are supported')
         for ID,child in df.iterrows():
@@ -213,7 +225,8 @@ class SWCImpedanceTree (BaseImpedanceTree):
                 coords = [[child.x, child.y, child.z],[parent.x, parent.y, parent.z]]
                 diams = [child.diam, parent.diam]
                 nodes[ID] = SWCImpedanceNode(ID, coords, diams,
-                                             cm, rm, ra, child.typ,
+                                             cm_dict[child.typ], rm_dict[child.typ],
+                                             ra_dict[child.typ], child.typ,
                                              parent=nodes[child.parent_ID])
         self._nodes_dict = nodes
         super().__init__(nodes[1])
