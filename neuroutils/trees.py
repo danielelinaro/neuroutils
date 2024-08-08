@@ -190,7 +190,7 @@ class ImpedanceTree (BaseImpedanceTree):
 
 
 class SWCImpedanceTree (BaseImpedanceTree):
-    def __init__(self, swc_file, cm, rm, ra):
+    def __init__(self, swc_file, cm, rm, ra, root_point=1):
         def make_dict(value):
             if isinstance(value, dict):
                 return value
@@ -207,7 +207,7 @@ class SWCImpedanceTree (BaseImpedanceTree):
                      'y': np.float32, 'z': np.float32, 'diam': np.float32,
                      'parent_ID': np.int32}
         df = pd.read_table(swc_file, sep=' ', header=None, names=col_names, index_col='ID')
-        nodes = OrderedDict()
+        nodes = {}
         soma_idx, = np.where(df.loc[:,'typ'] == 1)
         if len(soma_idx) == 3:
             # 3-point soma
@@ -229,10 +229,28 @@ class SWCImpedanceTree (BaseImpedanceTree):
                                              ra_dict[child.typ], child.typ,
                                              parent=nodes[child.parent_ID])
         self._nodes_dict = nodes
-        super().__init__(nodes[1])
-        
+        self._nodes_df = df
+        if nodes[root_point].parent is not None:
+            SWCImpedanceTree.make_root(nodes[root_point])
+        super().__init__(nodes[root_point])
+
+    @classmethod
+    def make_root(cls, child):
+        # see https://stackoverflow.com/questions/72076309/
+        # conversion-of-a-tree-to-a-new-tree-with-p-as-its-new-root
+        parent = child.parent
+        if parent.parent is not None:
+            SWCImpedanceTree.make_root(parent)
+        # this removes child from the list of children of parent
+        child.parent = None
+        child.add_child(parent)
+
     @property
     def nodes(self):
+        return self._nodes_dict
+
+    @property
+    def nodes_df(self):
         return self._nodes_df
 
 
