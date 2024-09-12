@@ -131,6 +131,10 @@ class BaseImpedanceTree (Tree):
             return A,A_on_path
         return A
 
+    def compute_coords(self, units='um'):
+        self.root._XYZ = np.array(self.root._xyz)
+        self.root.compute_coords(units)
+
 
 _get_ith_segment = lambda sec,i: [seg for seg in sec][i]
 _get_first_segment = lambda sec: _get_ith_segment(sec,0)

@@ -205,6 +205,18 @@ class SWCImpedanceNode (BaseImpedanceNode):
                          parent=parent,
                          children=children)
 
+    def compute_coords(self, units='um'):
+        for child,A in zip(self.children,self.A):
+            v = child._xyz - self._xyz            # direction vector
+            if units == 'lambda':
+                coeff = 1 / (self._lambda_DC * 1e4)  # [um]
+            elif units == 'um':
+                coeff = 1
+            else:
+                raise ValueError(f"Unknown units '{units}'")
+            child._XYZ = self._XYZ + np.abs(A) * v * coeff
+            child.compute_coords(units)
+
     @classmethod
     def compute_equivalent_cylinder_pars(cls, coords, diams):
         # radius of the larger base
