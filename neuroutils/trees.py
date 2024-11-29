@@ -14,7 +14,7 @@ GNU General Public License for more details.
 """
 
 
-from .nodes import Node, ImpedanceNode, SWCImpedanceNode, SWCNode
+from .nodes import ImpedanceNode, SWCImpedanceNode, SWCNode
 import numpy as np
 from neuron import h
 
@@ -24,8 +24,6 @@ __all__ = ['Tree', 'BaseImpedanceTree', 'ImpedanceTree', 'SWCImpedanceTree', 'SW
 class Tree (object):
     def __init__(self, root):
         self.root = root
-        self._branches = []
-        self._make_branches(self.root, self.branches)
 
     @property
     def root(self):
@@ -33,6 +31,8 @@ class Tree (object):
     @root.setter
     def root(self, r):
         self._root = r
+        self._branches = []
+        self._make_branches(self.root, self.branches)
 
     @property
     def branches(self):
@@ -82,7 +82,6 @@ class Tree (object):
         def _find_path_to_root(node):
             path = [node]
             while node.parent is not None:
-                idx = node.parent.children.index(node)
                 node = node.parent
                 path.append(node)
             return path[::-1]
@@ -113,27 +112,25 @@ class BaseImpedanceTree (Tree):
     def __init__(self, root):
         super().__init__(root)
 
+    def compute_distances(self, units='um'):
+        self.root.compute_distance_from_parent(units)
+
     def compute_impedances(self, F):
         self.root.compute_impedances(F)
         
     def compute_attenuations(self):
-        self.root.compute_attenuations()
+        self.root.compute_attenuation()
 
     def compute_attenuation(self, ID_start, ID_end, full_output=False):
         path = super().find_connecting_path(ID_start, ID_end)
-        n_nodes = len(path)-1
-        A_on_path = np.zeros(n_nodes, dtype=complex)
-        for i in range(n_nodes):
-            j = path[i].children.index(path[i+1])
-            A_on_path[i] = path[i].A[j]
+        A_on_path = np.array([node.A for node in path])
         A = np.abs(np.prod(A_on_path))
         if full_output:
             return A,A_on_path
         return A
 
-    def compute_coords(self, units='um'):
-        self.root._XYZ = np.array(self.root._xyz)
-        self.root.compute_coords(units)
+    def compute_coords(self, mode='from_root', units='um'):
+        self.root.compute_coords(mode, units)
 
 
 _get_ith_segment = lambda sec,i: [seg for seg in sec][i]
@@ -194,7 +191,8 @@ class ImpedanceTree (BaseImpedanceTree):
 
 
 class SWCImpedanceTree (BaseImpedanceTree):
-    def __init__(self, swc_file, cm, rm, ra, root_point=1):
+    def __init__(self, swc_file, cm, rm, ra, root_point=1, verbose=False):
+        import sys
         def make_dict(value):
             if isinstance(value, dict):
                 return value
@@ -205,37 +203,54 @@ class SWCImpedanceTree (BaseImpedanceTree):
         rm_dict = make_dict(rm)
         ra_dict = make_dict(ra)
         import pandas as pd
-        from collections import OrderedDict
         col_names = 'ID','typ','x','y','z','diam','parent_ID'
         col_types = {'ID': np.int32, 'typ': np.int32, 'x': np.float32,
                      'y': np.float32, 'z': np.float32, 'diam': np.float32,
                      'parent_ID': np.int32}
-        df = pd.read_table(swc_file, sep=' ', header=None, names=col_names, index_col='ID')
+        if verbose:
+            sys.stdout.write('Loading SWC file... ')
+            sys.stdout.flush()
+        df = pd.read_table(swc_file, sep=' ', header=None, names=col_names,
+                           index_col='ID', dtype=col_types)
+        if verbose:
+            sys.stdout.write('done.\n')
         nodes = {}
         soma_idx, = np.where(df.loc[:,'typ'] == 1)
+        coords_names = ['x','y','z']
         if len(soma_idx) == 3:
             # 3-point soma
-            coords = df.loc[[2,3],['x','y','z']].to_numpy()
-            diams = df.loc[[2,3],'diam'].to_numpy()
+            coords = df.loc[[2,3], coords_names].to_numpy()
+            diams = df.loc[[2,3], 'diam'].to_numpy()
             typ = 1
             nodes[1] = SWCImpedanceNode(1, coords, diams, cm_dict[typ],
                                         rm_dict[typ], ra_dict[typ],
                                         node_type=typ)
         else:
             raise NotImplementedError('Only morphologies with 3-point soma are supported')
+        if verbose:
+            sys.stdout.write('Building tree... ')
+            sys.stdout.flush()
         for ID,child in df.iterrows():
             if child.typ != 1:
                 parent = df.loc[child.parent_ID]
-                coords = [[child.x, child.y, child.z],[parent.x, parent.y, parent.z]]
-                diams = [child.diam, parent.diam]
+                coords = np.array([child[coords_names], parent[coords_names]])
+                diams = np.array([child.diam, parent.diam])
                 nodes[ID] = SWCImpedanceNode(ID, coords, diams,
                                              cm_dict[child.typ], rm_dict[child.typ],
                                              ra_dict[child.typ], child.typ,
                                              parent=nodes[child.parent_ID])
+
+        if verbose:
+            sys.stdout.write('done.\n')
         self._nodes_dict = nodes
         self._nodes_df = df
+        if verbose:
+            sys.stdout.write('Changing root... ')
+            sys.stdout.flush()
         if nodes[root_point].parent is not None:
             SWCImpedanceTree.make_root(nodes[root_point])
+        if verbose:
+            sys.stdout.write('done.\n')
         super().__init__(nodes[root_point])
 
     @classmethod
@@ -292,7 +307,6 @@ class SWCTree (Tree):
         import matplotlib.pyplot as plt
         import matplotlib.colors as colors
         from matplotlib.collections import LineCollection
-        from matplotlib import cm
     
         if ax is None:
             ax = plt.gca()
@@ -321,10 +335,13 @@ class SWCTree (Tree):
                 continue
             if branch[0].parent is not None:
                 node = branch[0].parent
-                xyzd = np.concatenate((np.array([node.x, node.y, node.z, node.diam * diam_coeff], ndmin=2),
-                                       [[node.x, node.y, node.z, node.diam * diam_coeff] for node in branch]))
+                xyzd = np.concatenate((np.array([node.x, node.y, node.z,
+                                                 node.diam*diam_coeff], ndmin=2),
+                                       [[node.x, node.y, node.z,
+                                         node.diam*diam_coeff] for node in branch]))
             else:
-                xyzd = np.array([[node.x, node.y, node.z, node.diam * diam_coeff] for node in branch])
+                xyzd = np.array([[node.x, node.y, node.z, node.diam * diam_coeff] \
+                                 for node in branch])
 
             if branch[0].parent is not None and branch[0].parent.type == 1:
                 xyzd[0,-1] = xyzd[1,-1]
@@ -332,9 +349,11 @@ class SWCTree (Tree):
             xy = xyzd[:,:2].reshape(-1, 1, 2)
             segments = np.concatenate([xy[:-1], xy[1:]], axis=1)
             if uniform_color_branches:
-                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, colors=color_fun(branch[0].type))
+                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2,
+                                    colors=color_fun(branch[0].type))
             else:
-                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2, cmap=cmap, norm=norm)
+                lc = LineCollection(segments, linewidths=xyzd[:,-1]/2,
+                                    cmap=cmap, norm=norm)
                 lc.set_array(interp(xyzd[:,:3]))
             line = ax.add_collection(lc)
 
@@ -352,7 +371,8 @@ class SWCTree (Tree):
             x = xlim[0] / 1.5
             y = (ylim[1] - scalebar_length) / 2
             ax.plot(x + np.zeros(2), y + np.array([0, scalebar_length]), 'k', lw=2)
-            ax.text(x - np.diff(xlim)/15, y + scalebar_length/2, r'{} $\mu$m'.format(scalebar_length), fontsize=12, \
+            ax.text(x - np.diff(xlim)/15, y + scalebar_length/2, r'{} $\mu$m'.\
+                    format(scalebar_length), fontsize=12, \
                     horizontalalignment='center', verticalalignment='center', rotation=90)
 
         if not uniform_color_branches and cbar_levels is not None:
@@ -360,7 +380,8 @@ class SWCTree (Tree):
                 ticks = np.linspace(values.min(), values.max(), cbar_ticks)
             else:
                 ticks = cbar_ticks
-            cbar = plt.colorbar(line, ax=ax, fraction=0.1, shrink=0.5, aspect=30, ticks=ticks, orientation=cbar_orientation)
+            cbar = plt.colorbar(line, ax=ax, fraction=0.1, shrink=0.5, aspect=30,
+                                ticks=ticks, orientation=cbar_orientation)
             cbar.ax.set_yticklabels(cbar_ticks_fun(ticks))
             if cbar_orientation == 'vertical':
                 cbar.ax.set_ylabel(cbar_label)

@@ -92,7 +92,8 @@ class BaseImpedanceNode (Node):
         # DC input resistance
         self._r_inf = 2*np.sqrt(self._ra*self._rm) / \
                       (np.pi*self._diam**(3/2)) # [Ohm]
-        self._A = np.zeros(len(self.children), dtype=complex)
+        self._A = 1+0j
+        self._A_from_root = 1+0j
 
     @property
     def L(self):
@@ -127,6 +128,9 @@ class BaseImpedanceNode (Node):
     @property
     def A(self):
         return self._A
+    @property
+    def A_from_root(self):
+        return self._A_from_root
     
     def compute_impedances(self, F):
         w = 2*np.pi*F
@@ -147,7 +151,14 @@ class BaseImpedanceNode (Node):
             Z = 1/np.sum(1/Z)
             self._Zp = (Z+self.Za)*self.Zm/(Z+self.Za+self.Zm)
         self._Zload = self.Za + self.Zp
-        
+
+    def compute_attenuation(self):
+        if self.parent is not None:
+            self._A = 1 + (self.parent.Za + self.Za) / self.Zp
+            self._A_from_root = self.parent.A_from_root * self.A
+        for child in self.children:
+            child.compute_attenuation()
+
     def compute_attenuations(self):
         n_children = len(self.children)
         self._A = np.zeros(n_children, dtype=complex)
@@ -194,7 +205,7 @@ class SWCImpedanceNode (BaseImpedanceNode):
         self._h,self._g,self._S = h,g,S
         self._x,self._y,self._z = np.mean(coords, axis=0)
         self._xyz = np.array([self._x, self._y, self._z])
-        self._node_type = node_type
+        self._node_type = int(node_type)
         super().__init__(ID,
                          L*1e-4,      # [cm]
                          #TODO: figure out why the multiplication by 2 below is necessary
@@ -204,18 +215,67 @@ class SWCImpedanceNode (BaseImpedanceNode):
                          ra,          # [Ohm.cm]
                          parent=parent,
                          children=children)
+        if parent is None:
+            self._distance = 0
+        else:
+            self._distance = self.parent.distance + np.linalg.norm(np.diff(coords,axis=0))
 
-    def compute_coords(self, units='um'):
-        for child,A in zip(self.children,self.A):
-            v = child._xyz - self._xyz            # direction vector
-            if units == 'lambda':
-                coeff = 1 / (self._lambda_DC * 1e4)  # [um]
-            elif units == 'um':
-                coeff = 1
-            else:
-                raise ValueError(f"Unknown units '{units}'")
-            child._XYZ = self._XYZ + np.abs(A) * v * coeff
-            child.compute_coords(units)
+    @property
+    def type(self):
+        return self._node_type
+    @property
+    def x(self):
+        return self._x
+    @property
+    def y(self):
+        return self._y
+    @property
+    def z(self):
+        return self._z
+    @property
+    def distance(self):
+        return self._distance
+    @property
+    def xyz(self):
+        return self._xyz
+    @property
+    def XYZ(self):
+        return self._XYZ
+    
+    def _coeff_for_units(self, units):
+        if units == 'um':
+            return 1
+        if units == 'lambda':
+            return 1 / (self._lambda_DC * 1e4)  # [1/um]
+        else:
+            raise ValueError("units must be either 'lambda' or 'um'")
+
+    def compute_distance_from_parent(self, units='um'):
+        coeff = self._coeff_for_units(units)
+        if self.parent is None:
+            self._distance = 0
+        else:
+            self._distance = self.parent.distance + coeff*np.linalg.norm(
+                self.xyz - self.parent.xyz)
+        for child in self.children:
+            child.compute_distance_from_parent(units)
+        
+    def compute_coords(self, mode='from_root', units='um'):
+        if mode == 'no_attenuation':
+            A = 1
+        elif mode == 'from_root':
+            A = np.abs(self.A_from_root)
+        elif mode == 'from_parent':
+            A = np.abs(self.A)
+        else:
+            raise ValueError("mode must be one of 'from_root', 'from_parent', or 'no_attenuation'")
+        coeff = self._coeff_for_units(units)
+        if self.parent is None:
+            self._XYZ = np.array(self._xyz)
+        else:
+            self._XYZ = self.parent._XYZ + coeff * A * (self._xyz - self.parent._xyz)
+        for child in self.children:
+            child.compute_coords(mode, units)
 
     @classmethod
     def compute_equivalent_cylinder_pars(cls, coords, diams):
