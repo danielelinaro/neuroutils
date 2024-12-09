@@ -184,7 +184,8 @@ class ImpedanceNode (BaseImpedanceNode):
                          parent=parent,
                          children=children)
 
-    def make_ID(seg):
+    @classmethod
+    def make_ID(cls, seg):
         return '{}-{:.4f}'.format(seg.sec.name(), seg.x)
 
     @property
@@ -208,8 +209,7 @@ class SWCImpedanceNode (BaseImpedanceNode):
         self._node_type = int(node_type)
         super().__init__(ID,
                          L*1e-4,      # [cm]
-                         #TODO: figure out why the multiplication by 2 below is necessary
-                         2*diam*1e-4, # [cm]
+                         diam*1e-4,   # [cm]
                          cm*1e-6,     # [F/cm2]
                          rm,          # [Ohm.cm2]
                          ra,          # [Ohm.cm]

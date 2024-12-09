@@ -215,9 +215,10 @@ class SWCImpedanceTree (BaseImpedanceTree):
         if verbose:
             sys.stdout.write('done.\n')
         nodes = {}
-        soma_idx, = np.where(df.loc[:,'typ'] == 1)
         coords_names = ['x','y','z']
-        if len(soma_idx) == 3:
+        soma_idx, = np.where(df.loc[:,'typ'] == 1)
+        N_soma_pts = len(soma_idx)
+        if N_soma_pts == 3:
             # 3-point soma
             coords = df.loc[[2,3], coords_names].to_numpy()
             diams = df.loc[[2,3], 'diam'].to_numpy()
@@ -225,20 +226,23 @@ class SWCImpedanceTree (BaseImpedanceTree):
             nodes[1] = SWCImpedanceNode(1, coords, diams, cm_dict[typ],
                                         rm_dict[typ], ra_dict[typ],
                                         node_type=typ)
-        else:
-            raise NotImplementedError('Only morphologies with 3-point soma are supported')
+        elif N_soma_pts != 0:
+            raise NotImplementedError('Only morphologies with no soma or with 3-point soma are supported')
         if verbose:
             sys.stdout.write('Building tree... ')
             sys.stdout.flush()
         for ID,child in df.iterrows():
-            if child.typ != 1:
+            if child.parent_ID in df.index and (N_soma_pts == 0 or child.typ != 1):
                 parent = df.loc[child.parent_ID]
-                coords = np.array([child[coords_names], parent[coords_names]])
-                diams = np.array([child.diam, parent.diam])
+                #coords = np.array([child[coords_names], parent[coords_names]])
+                #diams = np.array([child.diam, parent.diam])
+                coords = np.array([parent[coords_names], child[coords_names]])
+                diams = np.array([parent.diam, child.diam])
+                parent_node = nodes[child.parent_ID] if child.parent_ID in nodes else None
                 nodes[ID] = SWCImpedanceNode(ID, coords, diams,
                                              cm_dict[child.typ], rm_dict[child.typ],
                                              ra_dict[child.typ], child.typ,
-                                             parent=nodes[child.parent_ID])
+                                             parent=parent_node)
 
         if verbose:
             sys.stdout.write('done.\n')
