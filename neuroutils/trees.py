@@ -150,7 +150,7 @@ class ImpedanceTree (BaseImpedanceTree):
         self._make_branch_decreasing_x(root)
 
     def _make_branch_increasing_x(self, node):
-        branch = [ImpedanceNode(seg) for seg in node.sec if seg.x > node.seg.x]
+        branch = [ImpedanceNode(seg) for seg in node.sec if seg != node.seg and seg.x > node.seg.x]
         if len(branch) > 0:
             node.add_child(branch[0])
             for node_i,node_j in zip(branch[:-1],branch[1:]):
@@ -164,7 +164,7 @@ class ImpedanceTree (BaseImpedanceTree):
             self._make_branch_increasing_x(child_node)
 
     def _make_branch_decreasing_x(self, node):
-        branch = [ImpedanceNode(seg) for seg in node.sec if seg.x < node.seg.x][::-1]
+        branch = [ImpedanceNode(seg) for seg in node.sec if seg != node.seg and seg.x < node.seg.x][::-1]
         if len(branch) > 0:
             node.add_child(branch[0])
             for node_i,node_j in zip(branch[:-1],branch[1:]):
